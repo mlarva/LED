@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    body {
+    background-color: #404040;
+  }
+  h1 {
+    color:white;
+  }
+  p {
+    color:white;
+  }
+  </style>
+</head>
+
+<body>
+
+  <h1>{{.Title}}</h1>
+
+  <form action="/solidcolor">
+    <p>Select your color:</p> <input type="color" name="selectedcolor" value="#ff0000"><br><br>
+    <input type="submit">
+  </form>
+
+  <p><b>Note:</b> type="color" is not supported in Internet Explorer 11 or Safari 9.1 (or earlier).</p>
+
+</body>
+
+</html>
