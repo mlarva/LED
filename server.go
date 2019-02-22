@@ -5,13 +5,17 @@ import (
 	log "github.com/sirupsen/logrus"
 	"html/template"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"fmt"
 )
 
 var (
 	_homepageTemplate *template.Template
+  knt               int
 	err               error
+	client 						mqtt.Client
 )
 
 func main() {
@@ -22,25 +26,6 @@ func main() {
 	log.SetFormatter(Formatter)
 	log.SetLevel(log.TraceLevel)
 
-  /*
-	//MQTT Variables & Configuration
-	var client MQTT.Client
-	if broker == "" {
-		broker = "gateway:1883"
-	}
-	opts := MQTT.NewClientOptions()
-	opts.AddBroker(broker)
-	client = MQTT.NewClient(opts)
-	token := client.Connect()
-	for token.Wait() && token.Error() != nil && client.IsConnected() == false {
-		time.Sleep(2 * time.Second)
-		ErrorLog.Println("Trying to Connect to Broker", broker)
-		token = client.Connect()
-	}
-	log.Info("Connected to Broker:", broker)
-  subscribe("hello", )
-  */
-
 	//Start Server
 	log.Info("------------Server Started------------")
 	err = loadPageTemplates()
@@ -49,17 +34,42 @@ func main() {
 	}
 	http.HandleFunc("/", homePage)
 	http.HandleFunc("/solidcolor", solidColor)
-	err = http.ListenAndServe(":80", nil)
-	if err != nil {
-		log.Error("Http Error:", err)
+	go func() {
+		err = http.ListenAndServe(":80", nil)
+		if err != nil {
+			log.Error("Http Error:", err)
+		}
+	}()
+
+	//Run mqtt
+	opts := mqtt.NewClientOptions()
+	opts.SetClientID("go-simple")
+	opts.AddBroker("localhost:1883")
+	//create and start a client using the above ClientOptions
+	client = mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		panic(token.Error())
 	}
+	//subscribe
+	if token := client.Subscribe("rgb", 0, mqttMessageHandler); token.Wait() && token.Error() != nil {
+		fmt.Println(token.Error())
+		os.Exit(1)
+	}
+	select {
+
+	}
+}
+
+func mqttMessageHandler(client mqtt.Client, msg mqtt.Message) {
+  fmt.Printf("TOPIC: %s\n", msg.Topic())
+  fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
 func homePage(w http.ResponseWriter, r *http.Request) {
 	log.Info("Homepage Hit")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := make(map[string]interface{})
-	data["Title"] = "Title"
+	data["Title"] = "LED Color Select"
 	err := _homepageTemplate.Execute(w, data)
 	if err != nil {
 		log.Println(err)
@@ -72,6 +82,11 @@ func solidColor(w http.ResponseWriter, r *http.Request) {
 	m := r.URL.Query()
 	rgb := HexToRGB(m["selectedcolor"])
 	log.Info("Selected Color:", rgb)
+	sRGB := intArrayToString(rgb)
+	log.Trace("rgb string:", sRGB)
+	token := client.Publish("rgb",0,false,sRGB)
+	token.Wait()
+
 }
 
 //This function converts the returned color of form #AABBCC to rgb(1,2,3)
@@ -112,15 +127,20 @@ func hex2int(hexStr string) int {
 	return int(result)
 }
 
-/*
-//This function is used to subscribe to an MQTT Topic
-func subscribe(topicString string, function MQTT.MessageHandler) (bool, error) {
-	if token := client.Subscribe(topicString, byte(0), function); token.Wait() && token.Error() != nil {
-		return false, token.Error()
-	}
-	return true, nil
+//This function converts an int array into a string representing rgb values to me used in the mqtt message
+func intArrayToString(input []int) string {
+	result := "("
+	for i, v := range input {
+		if i <= 1 {
+			result = result + strconv.Itoa(v) + ","
+		} else {
+			result = result + strconv.Itoa(v) + ")"
+		}
 }
-*/
+	return result
+}
+
+
 
 //This function is used to load the HTML template
 func loadPageTemplates() error {
